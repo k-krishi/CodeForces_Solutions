@@ -28,7 +28,7 @@ jobs:
 
       - name: Run CF Sync Script
         env:
-          CF_HANDLE: "YOUR_CODEFORCES_HANDLE_HERE" # <-- MAKE SURE YOUR USERNAME IS HERE
+          CF_HANDLE: "krishna_puri"
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: python sync.py
 
