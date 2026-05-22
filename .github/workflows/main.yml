@@ -1,0 +1,29 @@
+name: Codeforces Sync
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs automatically every day at midnight UTC
+  workflow_dispatch: # Allows you to run it manually with a button click
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-python-version: '3.x'
+
+      - name: Run CF Sync
+        env:
+          CF_HANDLE: "krishna_puri" # <-- CHANGE THIS
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          # This pulls a lightweight python script to fetch and commit your AC solutions
+          curl -sL https://raw.githubusercontent.com/jmerle/codeforces-cleaner/master/scripts/sync.py -o sync.py
+          python sync.py
