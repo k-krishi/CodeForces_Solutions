@@ -1,9 +1,10 @@
 import os
 import sys
 import json
+import time
 import requests
+from bs4 import BeautifulSoup
 
-# Load Environment Variables
 HANDLE = os.environ.get("CF_HANDLE")
 TOKEN = os.environ.get("GH_TOKEN")
 
@@ -11,25 +12,17 @@ if not HANDLE:
     print("Error: CF_HANDLE env variable is missing.")
     sys.exit(1)
 
-print(f"Fetching accepted submissions for Codeforces user: {HANDLE}...")
+print(f"Fetching accepted submissions for: {HANDLE}...")
 
-# 1. Fetch data from official Codeforces API
-url = f"https://codeforces.com/api/user.status?handle={HANDLE}&from=1&count=1000"
+# 1. Fetch metadata from Codeforces API
+url = f"https://codeforces.com/api/user.status?handle={HANDLE}&from=1&count=100"
 response = requests.get(url)
 
-if response.status_code != 200:
-    print(f"Failed to query Codeforces API. Status Code: {response.status_code}")
+if response.status_code != 200 or response.json().get("status") != "OK":
+    print("Failed to contact Codeforces API.")
     sys.exit(1)
 
-data = response.json()
-if data.get("status") != "OK":
-    print("Codeforces API returned an error status.")
-    sys.exit(1)
-
-submissions = data.get("result", [])
-print(f"Found {len(submissions)} recent submissions total.")
-
-# 2. Setup folders and mapping for file extensions
+submissions = response.json().get("result", [])
 os.makedirs("submissions", exist_ok=True)
 history_file = "submission_history.json"
 
@@ -42,32 +35,20 @@ if os.path.exists(history_file):
 else:
     history = set()
 
-# Language extension mapping
-ext_map = {
-    "cpp": ".cpp", "c++": ".cpp", "g++": ".cpp", "clang": ".cpp",
-    "python": ".py", "pypy": ".py",
-    "java": ".java",
-    "kotlin": ".kt",
-    "rust": ".rs",
-    "go": ".go"
-}
-
+# C++ specific extension check
 def get_ext(lang_string):
-    lang_lower = lang_string.lower()
-    for key, ext in ext_map.items():
-        if key in lang_lower:
-            return ext
+    if "c++" in lang_string.lower() or "g++" in lang_string.lower():
+        return ".cpp"
     return ".txt"
 
-# 3. Filter and parse new Accepted (AC) solutions
 new_commits = 0
 updated_history = list(history)
 
+# 2. Extract code block from HTML page
 for sub in submissions:
     sub_id = str(sub.get("id"))
     verdict = sub.get("verdict")
     
-    # Only grab unique Accepted solutions
     if verdict == "OK" and sub_id not in history:
         problem = sub.get("problem", {})
         contest_id = problem.get("contestId")
@@ -81,20 +62,39 @@ for sub in submissions:
         ext = get_ext(prog_lang)
         file_path = f"submissions/{prob_name}{ext}"
         
-        # Note: Codeforces API does NOT return full code contents for privacy reasons. 
-        # This writes a metadata placeholder tracking file for the problem.
-        if not os.path.exists(file_path):
-            with open(file_path, "w") as sf:
-                sf.write(f"// Codeforces Problem: {contest_id}{index}\n")
-                sf.write(f"// Language: {prog_lang}\n")
-                sf.write(f"// Submission ID: {sub_id}\n\n")
-                sf.write("// Paste your solution source code here if backup required.\n")
+        # Build the actual submission page web link
+        submission_url = f"https://codeforces.com/contest/{contest_id}/submission/{sub_id}"
+        print(f"Scraping code for problem {prob_name} (ID: {sub_id})...")
+        
+        try:
+            # Codeforces pages require a standard User-Agent header or they block requests
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            page_res = requests.get(submission_url, headers=headers)
             
-            updated_history.append(sub_id)
-            new_commits += 1
+            if page_res.status_code == 200:
+                soup = BeautifulSoup(page_res.text, 'html.parser')
+                # Find the specific source code element block on Codeforces
+                code_element = soup.find('pre', id='program-source-text')
+                
+                if code_element:
+                    source_code = code_element.text
+                    
+                    with open(file_path, "w", encoding="utf-8") as sf:
+                        sf.write(source_code)
+                        
+                    updated_history.append(sub_id)
+                    new_commits += 1
+                    # Polite delay so Codeforces doesn't flag the script for rate limits
+                    time.sleep(2)
+                else:
+                    print(f"Could not find code element for submission {sub_id}. Private block?")
+            else:
+                print(f"Failed to fetch submission page {sub_id}. Code: {page_res.status_code}")
+        except Exception as e:
+            print(f"Error scraping submission {sub_id}: {e}")
 
-# 4. Save progress
+# 3. Save progress
 with open(history_file, "w") as f:
     json.dump(updated_history, f)
 
-print(f"Success! Found and logged {new_commits} new solved problems.")
+print(f"Finished! Successfully archived {new_commits} actual C++ source code files.")
