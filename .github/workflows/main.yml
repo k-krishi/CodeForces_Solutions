@@ -20,12 +20,15 @@ jobs:
         with:
           python-version: '3.x'
 
+      # ==================== HERE IS THE SECTION! ====================
       - name: Install dependencies
-        run: pip install requests
+        run: |
+          pip install requests beautifulsoup4
+      # ==============================================================
 
       - name: Run CF Sync Script
         env:
-          CF_HANDLE: "krishna_puri" # <-- CHANGE THIS
+          CF_HANDLE: "YOUR_CODEFORCES_HANDLE_HERE" # <-- MAKE SURE YOUR USERNAME IS HERE
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: python sync.py
 
