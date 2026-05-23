@@ -23,7 +23,6 @@ if response.status_code != 200 or response.json().get("status") != "OK":
     sys.exit(1)
 
 submissions = response.json().get("result", [])
-os.makedirs("submissions", exist_ok=True)
 history_file = "submission_history.json"
 
 if os.path.exists(history_file):
@@ -55,16 +54,23 @@ for sub in submissions:
         index = problem.get("index")
         prog_lang = sub.get("programmingLanguage", "txt")
         
+        # Grab difficulty rating safely from Codeforces API
+        rating = problem.get("rating")
+        difficulty_dir = f"submissions/{rating}" if rating else "submissions/unrated"
+        
         if not contest_id or not index:
             continue
             
         prob_name = f"{contest_id}_{index}"
         ext = get_ext(prog_lang)
-        file_path = f"submissions/{prob_name}{ext}"
+        
+        # Create dedicated directory based on problem difficulty rating
+        os.makedirs(difficulty_dir, exist_ok=True)
+        file_path = f"{difficulty_dir}/{prob_name}{ext}"
         
         # Build the actual submission page web link
         submission_url = f"https://codeforces.com/contest/{contest_id}/submission/{sub_id}"
-        print(f"Scraping code for problem {prob_name} (ID: {sub_id})...")
+        print(f"Scraping code for problem {prob_name} (Rating: {rating or 'Unrated'}) (ID: {sub_id})...")
         
         try:
             # Codeforces pages require a standard User-Agent header or they block requests
@@ -73,7 +79,6 @@ for sub in submissions:
             
             if page_res.status_code == 200:
                 soup = BeautifulSoup(page_res.text, 'html.parser')
-                # Find the specific source code element block on Codeforces
                 code_element = soup.find('pre', id='program-source-text')
                 
                 if code_element:
@@ -87,7 +92,7 @@ for sub in submissions:
                     # Polite delay so Codeforces doesn't flag the script for rate limits
                     time.sleep(2)
                 else:
-                    print(f"Could not find code element for submission {sub_id}. Private block?")
+                    print(f"Could not find code element for submission {sub_id}.")
             else:
                 print(f"Failed to fetch submission page {sub_id}. Code: {page_res.status_code}")
         except Exception as e:
@@ -97,4 +102,4 @@ for sub in submissions:
 with open(history_file, "w") as f:
     json.dump(updated_history, f)
 
-print(f"Finished! Successfully archived {new_commits} actual C++ source code files.")
+print(f"Finished! Successfully archived {new_commits} C++ files sorted by difficulty.")
